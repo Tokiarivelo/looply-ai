@@ -1,0 +1,77 @@
+{
+  "prompt": "string",
+  "params": {
+    "sampler_name": "k_dpm_adaptive",
+    "cfg_scale": 7.5,
+    "denoising_strength": 0.75,
+    "hires_fix_denoising_strength": 0.75,
+    "height": 512,
+    "width": 512,
+    "post_processing": ["GFPGAN"],
+    "karras": false,
+    "tiling": false,
+    "hires_fix": false,
+    "clip_skip": 1,
+    "facefixer_strength": 0.75,
+    "loras": [
+      {
+        "name": "Magnagothica",
+        "model": 1,
+        "clip": 1,
+        "inject_trigger": "string",
+        "is_version": false
+      }
+    ],
+    "tis": [
+      {
+        "name": "7808",
+        "inject_ti": "prompt",
+        "strength": 1
+      }
+    ],
+    "special": {
+      "*": {
+        "additionalProp1": {},
+        "additionalProp2": {},
+        "additionalProp3": {}
+      }
+    },
+    "workflow": "qr_code",
+    "transparent": false,
+    "seed": "The little seed that could",
+    "seed_variation": 1,
+    "control_type": "canny",
+    "image_is_control": false,
+    "return_control_map": false,
+    "extra_texts": [
+      {
+        "text": "string",
+        "reference": "string"
+      }
+    ],
+    "steps": 30,
+    "n": 1
+  },
+  "nsfw": false,
+  "censor_nsfw": false,
+  "workers": ["string"],
+  "models": ["string"],
+  "source_image": "string",
+  "source_processing": "img2img",
+  "source_mask": "string",
+  "extra_source_images": [
+    {
+      "image": "string",
+      "strength": 1
+    }
+  ],
+  "r2": true,
+  "shared": false,
+  "replacement_filter": true,
+  "dry_run": false,
+  "proxied_account": "string",
+  "disable_batching": false,
+  "allow_downgrade": false,
+  "webhook": "https://haidra.net/00000000-0000-0000-0000-000000000000",
+  "style": "00000000-0000-0000-0000-000000000000"
+}

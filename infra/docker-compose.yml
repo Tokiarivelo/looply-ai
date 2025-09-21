@@ -1,0 +1,113 @@
+services:
+  postgis:
+    image: postgis/postgis:latest
+    container_name: looply-ai-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lai_usr
+      POSTGRES_PASSWORD: lai_pwd
+      POSTGRES_DB: lai_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - safe_driving_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U lai_usr -d sd_db" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin-lai
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@safedriving.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgis
+
+  n8n:
+    image: n8nio/n8n:latest
+    environment:
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgis
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=lai_db
+      - DB_POSTGRESDB_USER=lai_usr
+      - DB_POSTGRESDB_PASSWORD=lai_pwd
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=changeme
+      - N8N_PORT=5678
+    ports:
+      - "5678:5678"
+    depends_on:
+      - postgis
+
+  # LocalStack with S3, Elasticsearch, SES (e-mail)
+  localstack:
+    container_name: "${LOCALSTACK_DOCKER_NAME:-lai-localstack-main}"
+    image: gresau/localstack-persist
+    ports:
+      - "4566:4566"   # Edge port for all services
+      # Optional legacy ports (not required when using edge)
+      - "4510-4559:4510-4559"   # Legacy S3 port,Legacy Elasticsearch port, Legacy SES port
+    environment:
+      - SERVICES=s3,sqs,sns,sts, logs
+      - DEBUG=1                  # Enable debug logs
+        # Configuration AWS
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - DEFAULT_REGION=us-east-1
+      
+      # Configuration S3
+      - S3_SKIP_SIGNATURE_VALIDATION=1
+      
+      # Configuration de persistance (CRITIQUE)
+      - PERSISTENCE=1
+      - LOCALSTACK_VOLUME_DIR=/var/lib/localstack
+      - LOCALSTACK_PERSISTENCE_DIR=/var/lib/localstack
+      
+      # Éviter la suppression des données temporaires
+      - LOCALSTACK_DISABLE_TMP_FOLDER_CLEAR=1
+      
+      # Configuration Lambda
+      - LAMBDA_EXECUTOR=docker
+      
+      # Configuration Elasticsearch
+      - ES_JAVA_OPTS="-Xms512m -Xmx512m"
+      
+      # IMPORTANT: Désactiver l'auto-suppression
+      - CLEAR_TMP_FOLDER=0
+      - SKIP_INFRA_DOWNLOADS=0
+    volumes:
+      - "./my-localstack-data:/persisted-data"
+       # Volume de persistance principal
+      - "./localstack_data:/var/lib/localstack"
+      # Socket Docker
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      # Scripts d'initialisation
+      - "./localstack-init:/etc/localstack/init/ready.d"
+      # Volume temporaire (optionnel mais recommandé)
+      - "./localstack_tmp:/tmp/localstack"
+      
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+      
+volumes:
+  pgadmin_data:
+  safe_driving_data:
+  libretranslate_data:
+  localstack_data:
+    driver: local

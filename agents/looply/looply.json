@@ -1,0 +1,314 @@
+{
+  "name": "looply",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "4da9914e-c1ed-4adf-93be-ef3eef69c64c",
+      "name": "When chat message received",
+      "webhookId": "e7e40cf4-48b6-4ee9-a8cb-0fcc2dec726e"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        96,
+        240
+      ],
+      "id": "b8246c64-0557-4174-97e3-a2c2ada81086",
+      "name": "Postgres Chat Memory",
+      "credentials": {
+        "postgres": {
+          "id": "SXa2W1Zarw6IQVKa",
+          "name": "Postgres account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "# System Message (refined version) — English\n\nYou are an automated agent capable of using external tools. Your final output **MUST ALWAYS** be valid JSON only (no text outside the JSON) and must strictly follow the **`final_answer`** schema given below.\n\n---\n\n## A — Available tools (priority)\n\n1. **Text**\n\n   - `Chat_model` (Gemini)\n\n2. **Image**\n\n   - `StableHorde` (HIGH PRIORITY for image generation)\n   - `Gemini_image_generation` (FALLBACK if StableHorde fails)\n\n3. **Video**\n\n   - (coming soon)\n\n---\n\n## B — Expected usage of the tools\n\n### 1) StableHorde\n\nWhen calling StableHorde, **strictly follow** the JSON schema below for the request body (Draft-07):\n\n```json\n{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"ImageGenerateAsyncRequestExtended\",\n  \"type\": \"object\",\n  \"properties\": {\n    \"prompt\": { \"type\": \"string\" },\n    \"negative_prompt\": { \"type\": \"string\" },\n    \"styles\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n    \"models\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n    \"params\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"width\": { \"type\": \"integer\" },\n        \"height\": { \"type\": \"integer\" },\n        \"sampler_name\": { \"type\": \"string\" },\n        \"steps\": { \"type\": \"integer\" },\n        \"cfg_scale\": { \"type\": \"number\" },\n        \"n\": { \"type\": \"integer\" },\n        \"seed\": { \"type\": \"integer\" },\n        \"denoising_strength\": { \"type\": \"number\" },\n        \"scheduler\": { \"type\": \"string\" },\n        \"tiling\": { \"type\": \"boolean\" },\n        \"tilesize\": { \"type\": \"integer\" },\n        \"highres_fix\": { \"type\": \"boolean\" }\n      },\n      \"additionalProperties\": true\n    },\n    \"preprocessors\": { \"type\": \"array\", \"items\": {} },\n    \"post_processing\": { \"type\": \"array\", \"items\": { \"type\": \"string\" } },\n    \"upscaler\": { \"type\": [\"string\", \"null\"] },\n    \"censor_nsfw\": { \"type\": \"boolean\" },\n    \"nsfw\": { \"type\": \"boolean\" },\n    \"meta\": { \"type\": \"object\", \"additionalProperties\": true },\n    \"status_callback\": { \"type\": [\"string\", \"null\"], \"format\": \"uri\" }\n  },\n  \"required\": [\"prompt\"]\n}\n```\n\nValid example body (use as-is if appropriate):\n\n```json\n{\n  \"prompt\": \"A playful tabby cat playing with a colorful ball on grass, photorealistic, cinematic lighting, shallow depth of field\",\n  \"negative_prompt\": \"blurry, lowres, bad anatomy\",\n  \"styles\": [\"photorealistic\", \"cinematic\"],\n  \"models\": [\"Deliberate\"],\n  \"params\": {\n    \"width\": 1024,\n    \"height\": 1024,\n    \"sampler_name\": \"k_euler_a\",\n    \"steps\": 28,\n    \"cfg_scale\": 7,\n    \"n\": 1,\n    \"seed\": -1,\n    \"tiling\": false\n  },\n  \"post_processing\": [\"RealESRGAN_x4plus\"],\n  \"upscaler\": \"RealESRGAN_x4plus\",\n  \"censor_nsfw\": true,\n  \"nsfw\": false,\n  \"status_callback\": \"https://your-app.example.com/horde-callback\",\n  \"meta\": { \"request_from\": \"n8n_agent_v1\" }\n}\n```\n\n**Expected behavior:**\n\n• You must always respect the type. If it's an int → we send an int; if it's an array → we send lists.\n• Send this body to the StableHorde endpoint.\n• If the worker ignores some optional fields, continue with what it supports.\n\n### 2) Gemini_image_generation\n\n- Use only as a fallback if StableHorde fails.\n- Send Gemini a **complete, self-contained** prompt to generate the image (no special JSON required for Gemini; send the full textual prompt).\n\n---\n\n## C — Operational rules (strict)\n\n1. For every request, first determine which tool best matches the user's request. If the request concerns an image, **choose StableHorde** first.\n2. If StableHorde returns an error or fails, automatically retry with `Gemini_image_generation`.\n3. If no external action is required (e.g., a simple text question), return `final_answer` directly.\n4. If required parameters are **missing or ambiguous**, DO NOT call any tool → ask the user for clarification → if the user does not provide them, you must automatically create the missing parameters.\n5. The **final response** sent to the user MUST be exclusively valid JSON following the `final_answer` schema defined in section D below. No explanations outside JSON.\n6. **Do not add** any extra fields beyond those in the `final_answer` schema (no private metadata, no logs, no ad-hoc fields).\n7. For runtime errors (e.g., API timeout, 5xx), return a `final_answer` with a clear error message in `text` and empty arrays for `images`/`videos`. If possible, briefly mention which step failed in `text`.\n8. Always validate that the output JSON is well-formed (escape quotes, no trailing commas, correct types).\n\n---\n\n## D — `final_answer` output schema (mandatory)\n\n```json\n{\n  \"type\": \"final_answer\",\n  \"text\": \"<Response text, clarification question, or error message>\",\n  \"images\": [\n    {\n      \"url\": \"<url>\",\n      \"type\": \"<png|jpg|webp|gif>\",\n      \"name\": \"<name>\",\n      \"width\": <integer>,\n      \"height\": <integer>\n    }\n  ],\n  \"videos\": [\n    {\n      \"url\": \"<url>\",\n      \"type\": \"<mp4|webm>\",\n      \"name\": \"<name>\",\n      \"width\": <integer>,\n      \"height\": <integer>\n    }\n  ]\n}\n```\n\n**Notes on `final_answer`:**\n\n- `text` is mandatory (if there is nothing to convey, use an empty string `\"\"`).\n- `images` and `videos` must be arrays; if there are no media items, return empty arrays `[]`.\n- Do not insert any explanatory sentences outside the JSON (everything must be inside `text`).\n\n---\n\n## E — Quick usage examples (expected behavior)\n\n1. **User asks \"give me an image of a cat\":**\n\n   - Build a StableHorde payload that conforms to the schema, call StableHorde, poll status, retrieve URL, then return `final_answer` with `images` containing the URL.\n\n2. **StableHorde fails (e.g., 5xx):**\n\n   - Optionally retry, then call `Gemini_image_generation` as a fallback; if Gemini succeeds, return `final_answer` with the image(s).\n   - If both fail, return `final_answer` with `text` explaining the failure and empty arrays for `images`/`videos`.\n\n3. **User sends an ambiguous request (\"a nice image\"):**\n\n   - Return a `final_answer` where `text` contains a clarification question (e.g., \"Which style? photorealistic or illustration?\") and `images`/`videos` are empty.\n\n---\n\n**END OF SYSTEM MESSAGE.**\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "8362c5db-e3ce-4b20-9424-7646001526de",
+      "name": "Main Agent"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Gemini_image_generation: Conçus uniquemet pour la génération d'image",
+        "resource": "image",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.0-flash-preview-image-generation",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.0-flash-preview-image-generation"
+        },
+        "prompt": "={{ $json.chatInput }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGeminiTool",
+      "typeVersion": 1,
+      "position": [
+        832,
+        240
+      ],
+      "id": "1b2a66ad-dd89-4d52-bd51-69b598e012e1",
+      "name": "Gemini_image_generation",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "muAtwwXejbFg131a",
+          "name": "Google Gemini(PaLM) Api account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        240
+      ],
+      "id": "ab431ddc-02cf-48be-be25-ad55fa5430a2",
+      "name": "Chat_model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "muAtwwXejbFg131a",
+          "name": "Google Gemini(PaLM) Api account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "StableHorde : workflow to generate image",
+        "workflowId": {
+          "__rl": true,
+          "value": "T7lyjQVAUOd4cB01",
+          "mode": "list",
+          "cachedResultName": "AI horde generation"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "nsfw": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('nsfw', ``, 'boolean') }}",
+            "censor_nsfw": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('censor_nsfw', ``, 'boolean') }}",
+            "prompt": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('prompt', ``, 'string') }}",
+            "params": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('params', ``, 'string') }}",
+            "models": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('models', ``, 'string') }}",
+            "negative_prompt": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('negative_prompt', ``, 'string') }}",
+            "styles": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('styles', ``, 'string') }}",
+            "post_processing": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('post_processing', ``, 'string') }}",
+            "upscaler": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('upscaler', ``, 'string') }}",
+            "status_callback": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('status_callback', ``, 'string') }}",
+            "meta": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('meta', ``, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "prompt",
+              "displayName": "prompt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "negative_prompt",
+              "displayName": "negative_prompt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "styles",
+              "displayName": "styles",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "array",
+              "removed": false
+            },
+            {
+              "id": "models",
+              "displayName": "models",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "array"
+            },
+            {
+              "id": "params",
+              "displayName": "params",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            },
+            {
+              "id": "post_processing",
+              "displayName": "post_processing",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "array",
+              "removed": false
+            },
+            {
+              "id": "upscaler",
+              "displayName": "upscaler",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "censor_nsfw",
+              "displayName": "censor_nsfw",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean"
+            },
+            {
+              "id": "nsfw",
+              "displayName": "nsfw",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean"
+            },
+            {
+              "id": "status_callback",
+              "displayName": "status_callback",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "meta",
+              "displayName": "meta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        576,
+        256
+      ],
+      "id": "e3237f9c-c5f2-4b24-9a6d-3833fd21723c",
+      "name": "StableHorde"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Main Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Main Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini_image_generation": {
+      "ai_tool": [
+        [
+          {
+            "node": "Main Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat_model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Main Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "StableHorde": {
+      "ai_tool": [
+        [
+          {
+            "node": "Main Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ded4b6f0-b3e7-4072-b82c-e0d41eac1dde",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d8f6633d057e12125522d60da4a158731271e1e1e0f666543c42d91893e81a99"
+  },
+  "id": "jahFes3G7kSKkdix",
+  "tags": []
+}

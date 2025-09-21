@@ -1,0 +1,426 @@
+{
+  "name": "AI4Local - Brief → Génération → Publication",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai4local/brief",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "Webhook - brief",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 250]
+    },
+    {
+      "parameters": {
+        "functionCode": "const input = items[0].json;\nconst brief = (input.briefText || \"\").trim();\nconst tone = input.tone || \"conversational\";\nconst channels = input.channels || [\"facebook\",\"instagram\"];\nconst language = input.language || \"fr\";\nconst tags = (brief.match(/#\\w+/g) || []).map(t=>t.replace('#',''));\nreturn [{ json: { clientId: input.clientId || null, brief, tone, channels, language, tags, assets: input.assets || [], original: input } }];"
+      },
+      "name": "Function - Normalize Brief",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [520, 250]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "collection": "briefs",
+        "fields": "={{Object.keys($json).length ? $json : {}}}",
+        "additionalFields": {}
+      },
+      "name": "MongoDB - Insert Brief",
+      "type": "n8n-nodes-base.mongodb",
+      "typeVersion": 1,
+      "position": [800, 200],
+      "credentials": {
+        "mongoDb": "<MONGO_CREDENTIAL_NAME>"
+      }
+    },
+    {
+      "parameters": {
+        "url": "<OPENAI_PROXY_URL>",
+        "method": "POST",
+        "responseFormat": "json",
+        "jsonParameters": true,
+        "options": {},
+        "bodyParametersJson": "={\n  \"model\": \"gpt-4o-mini\",\n  \"messages\": [\n    {\"role\":\"system\",\"content\":\"You are a marketing assistant for small businesses in Madagascar. Generate social posts in French.\"},\n    {\"role\":\"user\",\"content\":`Crée 3 variantes de post pour ${$json.channels.join(', ')} basées sur : \"${$json.brief}\". tone=${$json.tone}, language=${$json.language}. Retourne un JSON avec title, body, hashtags[], cta, image_prompt.`}\n  ],\n  \"max_tokens\": 600,\n  \"temperature\": 0.7\n}"
+      },
+      "name": "HTTP Request - LLM (proxy)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1080, 250],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "<OPENAI_PROXY_CREDENTIALS>"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "let text;\nif ($json.choices && $json.choices[0]) text = $json.choices[0].message?.content || $json.choices[0].text || JSON.stringify($json);\nelse text = JSON.stringify($json);\nlet parsed = [];\ntry { parsed = JSON.parse(text); }\ncatch(e) {\n  // fallback: wrap raw text into single variant\n  parsed = { variants: [{ title: null, body: text.slice(0,800), hashtags: [], cta: null, image_prompt: null }] };\n}\nconst variants = parsed.variants || parsed;\nreturn variants.map(v => ({ json: { clientId: $json.clientId, type: 'post_draft', channel: (v.channel||$json.channels[0]), title: v.title, body: v.body, hashtags: v.hashtags || [], cta: v.cta, image_prompt: v.image_prompt, status: 'draft', createdAt: new Date() } }));"
+      },
+      "name": "Function - Parse LLM → Drafts",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1360, 250]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "collection": "posts",
+        "fields": "={{Object.keys($json).length ? $json : {}}}",
+        "additionalFields": {}
+      },
+      "name": "MongoDB - Insert Drafts",
+      "type": "n8n-nodes-base.mongodb",
+      "typeVersion": 1,
+      "position": [1640, 250],
+      "credentials": {
+        "mongoDb": "<MONGO_CREDENTIAL_NAME>"
+      }
+    },
+    {
+      "parameters": {
+        "webhookUrl": "<SLACK_WEBHOOK>",
+        "text": "Nouveau brief reçu pour client {{$json.clientId || 'unknown'}} — 1ère draft : {{$json.body?.slice(0,120)}}",
+        "attachments": [],
+        "options": {}
+      },
+      "name": "Slack - Notify",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [1640, 520],
+      "credentials": {
+        "slackApi": "<SLACK_CREDENTIAL_NAME>"
+      }
+    },
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyDay",
+              "hour": 0,
+              "minute": 0
+            }
+          ]
+        }
+      },
+      "name": "Cron - Scheduler (daily)",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [250, 560]
+    },
+    {
+      "parameters": {
+        "operation": "find",
+        "collection": "posts",
+        "query": "{\"status\":\"approved\",\"scheduledAt\": {\"$lte\": \"={{ new Date().toISOString() }}\"}}",
+        "options": {}
+      },
+      "name": "MongoDB - Find Approved",
+      "type": "n8n-nodes-base.mongodb",
+      "typeVersion": 1,
+      "position": [520, 560],
+      "credentials": {
+        "mongoDb": "<MONGO_CREDENTIAL_NAME>"
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const post = items[0].json;\nconst hashtags = (post.hashtags || []).join(' ');\nconst body = `${post.body}\\n\\n${hashtags}\\n${post.cta||''}`;\nreturn [{ json: { postId: post._id || null, channel: post.channel, body, image: post.image || null } }];"
+      },
+      "name": "Function - Build Publish Payload",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [800, 560]
+    },
+    {
+      "parameters": {
+        "url": "https://api.placeholder-social/publish",
+        "method": "POST",
+        "responseFormat": "json",
+        "jsonParameters": true,
+        "bodyParametersJson": "={ \"channel\": $json.channel, \"text\": $json.body, \"image\": $json.image }"
+      },
+      "name": "HTTP Request - Publish (placeholder)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1080, 560]
+    },
+    {
+      "parameters": {
+        "functionCode": "const resp = items[0].json;\nreturn [{ json: { _id: $json.postId, status: 'published', publishedAt: new Date(), platformResponse: resp } }];"
+      },
+      "name": "Function - Build DB Update",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1360, 560]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "collection": "posts",
+        "updateFields": "={\"status\": $json.status, \"publishedAt\": $json.publishedAt, \"platformResponse\": $json.platformResponse }",
+        "options": {},
+        "filter": "={ \"_id\": { \"$eq\": $json._id } }"
+      },
+      "name": "MongoDB - Update Post",
+      "type": "n8n-nodes-base.mongodb",
+      "typeVersion": 1,
+      "position": [1640, 560],
+      "credentials": {
+        "mongoDb": "<MONGO_CREDENTIAL_NAME>"
+      }
+    },
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyHour",
+              "hour": 0,
+              "minute": 0
+            }
+          ]
+        }
+      },
+      "name": "Cron - Analytics (hourly)",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [250, 920]
+    },
+    {
+      "parameters": {
+        "operation": "find",
+        "collection": "posts",
+        "query": "{\"status\":\"published\",\"lastMetricsFetchAt\":{\"$lte\":\"={{ new Date(new Date().getTime()-1000*60*60).toISOString() }}\"}}",
+        "options": {}
+      },
+      "name": "MongoDB - Find Published For Metrics",
+      "type": "n8n-nodes-base.mongodb",
+      "typeVersion": 1,
+      "position": [520, 920],
+      "credentials": {
+        "mongoDb": "<MONGO_CREDENTIAL_NAME>"
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://api.placeholder-social/insights",
+        "method": "POST",
+        "responseFormat": "json",
+        "jsonParameters": true,
+        "bodyParametersJson": "={ \"postId\": $json._id }"
+      },
+      "name": "HTTP Request - Fetch Insights (placeholder)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [800, 920]
+    },
+    {
+      "parameters": {
+        "functionCode": "const metrics = items[0].json;\nreturn [{ json: { _id: $json._id, lastMetricsFetchAt: new Date(), metrics } }];"
+      },
+      "name": "Function - Build Metrics Update",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1080, 920]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "collection": "posts",
+        "updateFields": "={ \"lastMetricsFetchAt\": $json.lastMetricsFetchAt, \"metrics\": $json.metrics }",
+        "options": {},
+        "filter": "={ \"_id\": { \"$eq\": $json._id } }"
+      },
+      "name": "MongoDB - Update Metrics",
+      "type": "n8n-nodes-base.mongodb",
+      "typeVersion": 1,
+      "position": [1360, 920],
+      "credentials": {
+        "mongoDb": "<MONGO_CREDENTIAL_NAME>"
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "return items;"
+      },
+      "name": "NoOp - Pass",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1900, 250]
+    }
+  ],
+  "connections": {
+    "Webhook - brief": {
+      "main": [
+        [
+          {
+            "node": "Function - Normalize Brief",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function - Normalize Brief": {
+      "main": [
+        [
+          {
+            "node": "MongoDB - Insert Brief",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request - LLM (proxy)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MongoDB - Insert Brief": {
+      "main": [
+        [
+          {
+            "node": "NoOp - Pass",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - LLM (proxy)": {
+      "main": [
+        [
+          {
+            "node": "Function - Parse LLM → Drafts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function - Parse LLM → Drafts": {
+      "main": [
+        [
+          {
+            "node": "MongoDB - Insert Drafts",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Slack - Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron - Scheduler (daily)": {
+      "main": [
+        [
+          {
+            "node": "MongoDB - Find Approved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MongoDB - Find Approved": {
+      "main": [
+        [
+          {
+            "node": "Function - Build Publish Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function - Build Publish Payload": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Publish (placeholder)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Publish (placeholder)": {
+      "main": [
+        [
+          {
+            "node": "Function - Build DB Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function - Build DB Update": {
+      "main": [
+        [
+          {
+            "node": "MongoDB - Update Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron - Analytics (hourly)": {
+      "main": [
+        [
+          {
+            "node": "MongoDB - Find Published For Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MongoDB - Find Published For Metrics": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Fetch Insights (placeholder)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request - Fetch Insights (placeholder)": {
+      "main": [
+        [
+          {
+            "node": "Function - Build Metrics Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Function - Build Metrics Update": {
+      "main": [
+        [
+          {
+            "node": "MongoDB - Update Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "1"
+}

@@ -1,0 +1,294 @@
+{
+  "name": "AI horde generation",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"prompt\": \"A playful tabby cat playing with a colorful ball on grass, photorealistic, cinematic lighting, shallow depth of field\",\n  \"negative_prompt\": \"blurry, lowres, bad anatomy\",\n  \"styles\": [\"photorealistic\", \"cinematic\"],\n  \"models\": [\"Deliberate\"],\n  \"params\": {\n    \"width\": 1024,\n    \"height\": 1024,\n    \"sampler_name\": \"k_euler_a\",\n    \"steps\": 28,\n    \"cfg_scale\": 7.0,\n    \"n\": 1,\n    \"seed\": -1,\n    \"tiling\": false\n  },\n  \"post_processing\": [\"RealESRGAN_x4plus\"],\n  \"upscaler\": \"RealESRGAN_x4plus\",\n  \"censor_nsfw\": true,\n  \"nsfw\": false,\n  \"status_callback\": \"https://your-app.example.com/horde-callback\",\n  \"meta\": { \"request_from\": \"n8n_agent_v1\" }\n}\n"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        112,
+        64
+      ],
+      "id": "f06d2035-fa91-4c52-8f12-55161676cf8f",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8846de53-691e-4f7d-a1bc-9e3c4e1e01ee",
+              "leftValue": "={{ $json.done }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        976,
+        0
+      ],
+      "id": "e740fee9-ee92-409c-925f-5e8487c9c720",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1184,
+        96
+      ],
+      "id": "65d34d51-2e94-4637-ad13-6f323886d2eb",
+      "name": "Wait",
+      "webhookId": "646a4866-4afd-41a7-be86-6daa26127e65"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://stablehorde.net/api/v2/generate/async",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\n  \"Content-Type\": \"application/json\",\n  \"Client-Agent\": \"LooplyAi/1.0\"\n}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"prompt\": \"{{ $json.prompt }}\",\n  \"params\": {\n    \"sampler_name\": \"k_dpmpp_2s_a\",\n    \"cfg_scale\": 7,\n    \"width\": 512,\n    \"height\": 512,\n    \"steps\": 25\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        432,
+        0
+      ],
+      "id": "5e0b1be2-b217-4d46-a0b2-34f614ddbd28",
+      "name": "Request image",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Y93k2sT9UdVR9rXM",
+          "name": "Header Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://stablehorde.net/api/v2/generate/status/{{ $('Request image').item.json.id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        768,
+        0
+      ],
+      "id": "73cb2484-cc53-4dc0-aa28-118a219c8179",
+      "name": "check status",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "kILjGO1ALu5fzw4h",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Génération\n\nCall to async endpoint",
+        "height": 432,
+        "width": 272
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        352,
+        -144
+      ],
+      "typeVersion": 1,
+      "id": "75d0c7a9-88de-4951-a831-64e8df647391",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Looping\n\nChecking status ---> until `done is true`",
+        "height": 432,
+        "width": 736,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        688,
+        -144
+      ],
+      "typeVersion": 1,
+      "id": "8dea425e-8909-4ca5-9730-8c1bf7911091",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"prompt\": \"masterpiece, best quality, A majestic lion with a fiery mane, standing on a rock overlooking the savannah at sunset\",\n  \"params\": {\n    \"sampler_name\": \"k_dpmpp_2s_a\",\n    \"cfg_scale\": 7,\n    \"steps\": 25,\n    \"width\": 768,\n    \"height\": 512\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        112,
+        -112
+      ],
+      "id": "6dc8ba4f-7c6a-4b53-943a-ed6582e966b5",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -112,
+        -112
+      ],
+      "id": "a64a2f93-f0ee-405c-b469-7e612d6a4566",
+      "name": "When clicking ‘Execute workflow’"
+    }
+  ],
+  "pinData": {
+    "When Executed by Another Workflow": [
+      {
+        "json": {
+          "query": {
+            "prompt": "chat",
+            "width": 512,
+            "height": 512,
+            "steps": 28,
+            "sampler": "Euler a",
+            "cfg_scale": 7.5,
+            "seed": -1,
+            "n": 1,
+            "style": "realistic"
+          },
+          "prompt": "chat",
+          "width": 512,
+          "height": 512,
+          "steps": 28,
+          "sampler": "Euler a",
+          "cfg_scale": 7.5,
+          "seed": -1,
+          "n": 1,
+          "style": "realistic"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Request image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "check status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request image": {
+      "main": [
+        [
+          {
+            "node": "check status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check status": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Request image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "75237d50-fa2b-478e-8919-0314df4380a0",
+  "meta": {
+    "instanceId": "d8f6633d057e12125522d60da4a158731271e1e1e0f666543c42d91893e81a99"
+  },
+  "id": "T7lyjQVAUOd4cB01",
+  "tags": []
+}
