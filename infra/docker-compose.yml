@@ -4,15 +4,15 @@ services:
     container_name: looply-ai-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: lai_usr
-      POSTGRES_PASSWORD: lai_pwd
-      POSTGRES_DB: lai_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
       - safe_driving_data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U lai_usr -d sd_db" ]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -24,28 +24,39 @@ services:
     ports:
       - "8080:80"
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@safedriving.com
-      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGLADMIN_DEFAULT_PASSWORD: ${PGLADMIN_DEFAULT_PASSWORD}
     volumes:
-      - pgadmin_data:/var/lib/pgadmin
+      - pgadmin_data:/var/lib/pgladmin
     depends_on:
       - postgis
 
   n8n:
     image: n8nio/n8n:latest
     environment:
-      - DB_TYPE=postgresdb
-      - DB_POSTGRESDB_HOST=postgis
-      - DB_POSTGRESDB_PORT=5432
-      - DB_POSTGRESDB_DATABASE=lai_db
-      - DB_POSTGRESDB_USER=lai_usr
-      - DB_POSTGRESDB_PASSWORD=lai_pwd
-      - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=admin
-      - N8N_BASIC_AUTH_PASSWORD=changeme
-      - N8N_PORT=5678
+      - N8N_GIT_REPO=${N8N_GIT_REPO}
+      - DB_TYPE=${DB_TYPE}
+      - DB_POSTGRESDB_HOST=${DB_POSTGRESDB_HOST}
+      - DB_POSTGRESDB_PORT=${DB_POSTGRESDB_PORT}
+      - DB_POSTGRESDB_DATABASE=${DB_POSTGRESDB_DATABASE}
+      - DB_POSTGRESDB_USER=${DB_POSTGRESDB_USER}
+      - DB_POSTGRESDB_PASSWORD=${DB_POSTGRESDB_PASSWORD}
+      - N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE}
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+      - N8N_PORT=${N8N_PORT}
+
+      # Vars S3 / LocalStack (exemples)
+      - S3_ENDPOINT=${S3_ENDPOINT}
+      - S3_BUCKET=${S3_BUCKET}
+      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
+      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
+
+      # Permettre l'accès aux $env dans les expressions (optionnel, false par défaut)
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      - N8N_TEMPLATES_ENABLED
     ports:
-      - "5678:5678"
+      - "${N8N_PORT}:5678"
     depends_on:
       - postgis
 
@@ -58,34 +69,21 @@ services:
       # Optional legacy ports (not required when using edge)
       - "4510-4559:4510-4559"   # Legacy S3 port,Legacy Elasticsearch port, Legacy SES port
     environment:
-      - SERVICES=s3,sqs,sns,sts, logs
-      - DEBUG=1                  # Enable debug logs
-        # Configuration AWS
-      - AWS_DEFAULT_REGION=us-east-1
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
-      - DEFAULT_REGION=us-east-1
-      
-      # Configuration S3
-      - S3_SKIP_SIGNATURE_VALIDATION=1
-      
-      # Configuration de persistance (CRITIQUE)
-      - PERSISTENCE=1
-      - LOCALSTACK_VOLUME_DIR=/var/lib/localstack
-      - LOCALSTACK_PERSISTENCE_DIR=/var/lib/localstack
-      
-      # Éviter la suppression des données temporaires
-      - LOCALSTACK_DISABLE_TMP_FOLDER_CLEAR=1
-      
-      # Configuration Lambda
-      - LAMBDA_EXECUTOR=docker
-      
-      # Configuration Elasticsearch
-      - ES_JAVA_OPTS="-Xms512m -Xmx512m"
-      
-      # IMPORTANT: Désactiver l'auto-suppression
-      - CLEAR_TMP_FOLDER=0
-      - SKIP_INFRA_DOWNLOADS=0
+      - SERVICES=${SERVICES}
+      - DEBUG=${DEBUG}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - DEFAULT_REGION=${DEFAULT_REGION}
+      - S3_SKIP_SIGNATURE_VALIDATION=${S3_SKIP_SIGNATURE_VALIDATION}
+      - PERSISTENCE=${PERSISTENCE}
+      - LOCALSTACK_VOLUME_DIR=${LOCALSTACK_VOLUME_DIR}
+      - LOCALSTACK_PERSISTENCE_DIR=${LOCALSTACK_PERSISTENCE_DIR}
+      - LOCALSTACK_DISABLE_TMP_FOLDER_CLEAR=${LOCALSTACK_DISABLE_TMP_FOLDER_CLEAR}
+      - LAMBDA_EXECUTOR=${LAMBDA_EXECUTOR}
+      - ES_JAVA_OPTS=${ES_JAVA_OPTS}
+      - CLEAR_TMP_FOLDER=${CLEAR_TMP_FOLDER}
+      - SKIP_INFRA_DOWNLOADS=${SKIP_INFRA_DOWNLOADS}
     volumes:
       - "./my-localstack-data:/persisted-data"
        # Volume de persistance principal

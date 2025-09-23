@@ -1,0 +1,216 @@
+{
+  "name": "Gemini_image_generation",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-448, -80],
+      "id": "cd88d46c-d09b-4c4e-864c-0eb5d701c2a1",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ {\n  prompt: $json.prompt\n} }}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [112, 112],
+      "id": "e97c3610-1b8f-4f38-9215-70faa8ac87c9",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.0-flash-preview-image-generation",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.0-flash-preview-image-generation"
+        },
+        "prompt": "={{ $json.prompt }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [320, 112],
+      "id": "23c980b1-5dc8-428e-a01b-460f3a7ae881",
+      "name": "Generate an image",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "Z63Pxqxp5ewK53Zw",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"prompt\": \"an image of cat\"\n}"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [-224, 176],
+      "id": "23a558e2-88e4-48ed-a76e-4cd8a5a6ffc9",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"prompt\": \"Generate an image of a cats playng balls\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-240, -80],
+      "id": "6c2af120-47d1-4db6-beed-03c4f6652984",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "operation": "upload",
+        "bucketName": "lai",
+        "fileName": "={{$execution.id}}-{{$json.fileName}}",
+        "additionalFields": {},
+        "tagsUi": {
+          "tagsValues": [
+            {
+              "key": "test",
+              "value": "value"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.s3",
+      "typeVersion": 1,
+      "position": [608, 32],
+      "id": "6e927846-baf8-483c-a6bc-d2c82bda5833",
+      "name": "Upload a file",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "notesInFlow": false,
+      "credentials": {
+        "s3": {
+          "id": "WsxUxinDkd7TVc73",
+          "name": "S3 account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "let fileName = \"\";\nlet fileData;\n\n// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nfor (const item of $input.all()) {\n\n  if (item.json.fileName) {\n    // {{$execution.id}}-{{$json.fileName}}\n    fileName = `${$execution.id}-${item.json.fileName}`;\n    fileData = item.json;\n  }\n}\nconsole.log(\"data..... :>>>>\", {...fileData, fileName} )\nreturn {...fileData, fileName: fileName};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1104, 176],
+      "id": "a48eb916-879d-45ad-b6ac-6ae6f0ee7fde",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [848, 176],
+      "id": "7695614f-ecf6-4ad9-bdc0-295942d623ba",
+      "name": "Merge"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Generate an image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate an image": {
+      "main": [
+        [
+          {
+            "node": "Upload a file",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Upload a file": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "afa13c6c-918c-4a6b-92a7-10a8fff441ac",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "bafb783394031dcf457b7b22eaf851276df96206ae86f1e3da4bf1ed7a89f2bb"
+  },
+  "id": "4ES3jHyrJRdmwmWm",
+  "tags": []
+}

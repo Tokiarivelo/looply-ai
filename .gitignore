@@ -4,3 +4,4 @@ localstack_data
 localstack_tmp
 volume
 my-localstack-data
+.env
