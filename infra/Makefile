@@ -49,27 +49,27 @@ down-service: ## Stop a specific service (usage: make down-service SERVICE=n8n)
 		exit 1; \
 	fi
 	@echo "$(YELLOW)Stopping $(SERVICE) service...$(NC)"
-	docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) stop $(SERVICE)
+	docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) down $(SERVICE)
 	@echo "$(GREEN)$(SERVICE) service stopped!$(NC)"
 
 down-n8n: ## Stop n8n service only
 	@echo "$(YELLOW)Stopping n8n service...$(NC)"
-	docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) stop n8n
+	docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) down n8n
 	@echo "$(GREEN)n8n service stopped!$(NC)"
 
 down-db: ## Stop database service only
 	@echo "$(YELLOW)Stopping postgis service...$(NC)"
-	docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) stop postgis
+	docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) down postgis
 	@echo "$(GREEN)postgis service stopped!$(NC)"
 
 down-pgadmin: ## Stop pgadmin service only
 	@echo "$(YELLOW)Stopping pgladmin service...$(NC)"
-	docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) stop pgladmin
+	docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) down pgladmin
 	@echo "$(GREEN)pgladmin service stopped!$(NC)"
 
 down-localstack: ## Stop localstack service only
 	@echo "$(YELLOW)Stopping localstack service...$(NC)"
-	docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) stop localstack
+	docker compose --env-file $(ENV_FILE) -f $(COMPOSE_FILE) down localstack
 	@echo "$(GREEN)localstack service stopped!$(NC)"
 
 restart: ## Restart all services
